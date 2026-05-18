@@ -132,9 +132,8 @@ func (g *Graph) Density() float64 {
 // ConnectedComponents finds all connected components in the graph.
 // Uses depth-first search to identify disconnected subgraphs.
 func (g *Graph) ConnectedComponents() [][]Node {
-	g.mutex.RLock()
+	// Don't hold lock while calling GetAllNodes, which acquires its own lock
 	nodes := g.GetAllNodes()
-	g.mutex.RUnlock()
 
 	visited := make(map[string]bool)
 	var components [][]Node
@@ -193,9 +192,8 @@ func (g *Graph) ComputeMetrics() GraphMetrics {
 // that pass through the given node. This is a simplified O(n^2) implementation
 // suitable for small to medium graphs.
 func (g *Graph) BetweennessCentrality(node *Node) float64 {
-	g.mutex.RLock()
+	// Don't hold lock while calling GetAllNodes, which acquires its own lock
 	allNodes := g.GetAllNodes()
-	g.mutex.RUnlock()
 
 	if len(allNodes) <= 2 {
 		return 0

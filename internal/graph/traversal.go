@@ -296,7 +296,8 @@ func (g *Graph) NodesByDistance(sourceID string) ([]*Node, []int, error) {
 	distances := make([]int, 0, len(visited))
 
 	for nodeID, distance := range visited {
-		if n, err := g.GetNode(nodeID); err == nil {
+		// Access nodes map directly since we already hold RLock
+		if n, exists := g.nodes[nodeID]; exists {
 			nodes = append(nodes, n)
 			distances = append(distances, distance)
 		}

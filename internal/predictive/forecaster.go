@@ -220,6 +220,10 @@ func (m *LinearRegressionModel) Train(historical []float64) error {
 // Forecast generates predictions for n periods into the future.
 // TODO: Implement forecasting using the fitted regression line
 func (m *LinearRegressionModel) Forecast(periods int) ([]Prediction, error) {
+	if periods < 0 {
+		return nil, fmt.Errorf("forecast periods must be non-negative, got %d", periods)
+	}
+
 	predictions := make([]Prediction, periods)
 
 	// TODO: Implement forecasting logic
@@ -230,6 +234,13 @@ func (m *LinearRegressionModel) Forecast(periods int) ([]Prediction, error) {
 // ConfidenceIntervals computes confidence bounds for predictions.
 // TODO: Implement confidence interval computation
 func (m *LinearRegressionModel) ConfidenceIntervals(periods int, confidenceLevel float64) (lower, upper []float64, err error) {
+	if periods < 0 {
+		return nil, nil, fmt.Errorf("confidence interval periods must be non-negative, got %d", periods)
+	}
+	if confidenceLevel <= 0 || confidenceLevel >= 1 {
+		return nil, nil, fmt.Errorf("confidence level must be in range (0, 1), got %.2f", confidenceLevel)
+	}
+
 	lower = make([]float64, periods)
 	upper = make([]float64, periods)
 
