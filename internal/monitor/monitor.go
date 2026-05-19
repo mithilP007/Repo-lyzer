@@ -15,6 +15,8 @@ import (
 	"github.com/agnivo988/Repo-lyzer/internal/github"
 )
 
+const monitorStateTTL = 100 * 365 * 24 * time.Hour
+
 // MonitorState represents the current state of a monitored repository
 type MonitorState struct {
 	Owner               string    `json:"owner"`
@@ -324,7 +326,7 @@ func (m *Monitor) saveState() {
 		stateCopy.Repo = m.repo
 	}
 
-	if err := m.cache.Set(key, stateCopy); err != nil {
+	if err := m.cache.SetWithTTL(key, stateCopy, monitorStateTTL); err != nil {
 		log.Printf("Failed to persist monitoring state for %s: %v", key, err)
 	}
 }

@@ -28,6 +28,7 @@ func setTempHome(t *testing.T) {
 	})
 }
 
+// TestMonitorState_SaveLoadRoundTrip verifies monitor state is persisted and restored end to end.
 func TestMonitorState_SaveLoadRoundTrip(t *testing.T) {
 	setTempHome(t)
 
@@ -54,8 +55,13 @@ func TestMonitorState_SaveLoadRoundTrip(t *testing.T) {
 
 	m.saveState()
 
+	reloadedCache, err := cache.NewCache()
+	if err != nil {
+		t.Fatalf("NewCache() reload error = %v", err)
+	}
+
 	restored := &Monitor{
-		cache: c,
+		cache: reloadedCache,
 		owner: "octocat",
 		repo:  "hello-world",
 		state: &MonitorState{Owner: "octocat", Repo: "hello-world"},
@@ -76,6 +82,7 @@ func TestMonitorState_SaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+// TestMonitorState_LoadState_InvalidCachePayload verifies invalid cached payloads do not overwrite state.
 func TestMonitorState_LoadState_InvalidCachePayload(t *testing.T) {
 	setTempHome(t)
 
@@ -106,6 +113,7 @@ func TestMonitorState_LoadState_InvalidCachePayload(t *testing.T) {
 	}
 }
 
+// TestMonitorState_LoadState_FillsMissingIdentity verifies missing owner and repo fields are restored.
 func TestMonitorState_LoadState_FillsMissingIdentity(t *testing.T) {
 	setTempHome(t)
 
