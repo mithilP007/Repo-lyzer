@@ -290,6 +290,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg := msg.(type) {
 		case CompareReposMsg:
 			m.state = stateCompareLoading
+			m.compareLoading.SetRepos(msg.Repo1, msg.Repo2)
 			cmds = append(cmds, m.compareRepos(msg.Repo1, msg.Repo2), TickProgressCmd())
 		case BackToMenuMsg:
 			m.state = stateMenu
