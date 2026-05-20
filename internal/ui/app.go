@@ -270,11 +270,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle messages from input model
 		switch msg := msg.(type) {
 		case AnalyzeRepoMsg:
-			m.state = stateLoading
-			m.loading.SetRepoName(msg.repoName)
-			ctx, cancel := context.WithCancel(context.Background())
-			m.analysisCancel = cancel
-			cmds = append(cmds, m.analyzeRepo(ctx, msg.repoName), TickProgressCmd())
+			cmds = append(cmds, m.startAnalysis(msg.repoName))
 		case BackToMenuMsg:
 			m.state = stateMenu
 			m.err = nil
@@ -441,11 +437,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.err = fmt.Errorf("Failed to save favorites: %v", err)
 					} else {
 						m.input.input = repoName
-						m.state = stateLoading
-						m.loading.SetRepoName(repoName)
-						ctx, cancel := context.WithCancel(context.Background())
-						m.analysisCancel = cancel
-						cmds = append(cmds, m.analyzeRepo(ctx, repoName), TickProgressCmd())
+						cmds = append(cmds, m.startAnalysis(repoName))
 					}
 				}
 			case "d":
@@ -486,11 +478,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.history.Entries) > 0 {
 					repoName := m.history.Entries[m.historyCursor].RepoName
 					m.input.input = repoName
-					m.state = stateLoading
-					m.loading.SetRepoName(repoName)
-					ctx, cancel := context.WithCancel(context.Background())
-					m.analysisCancel = cancel
-					cmds = append(cmds, m.analyzeRepo(ctx, repoName), TickProgressCmd())
+					cmds = append(cmds, m.startAnalysis(repoName))
 				}
 			case "d":
 				// Delete selected entry
@@ -713,11 +701,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key.String() == "." {
 				if m.dashboard.data.Repo != nil {
 					m.input.input = m.dashboard.data.Repo.FullName
-					m.state = stateLoading
-					m.loading.SetRepoName(m.input.input)
-					ctx, cancel := context.WithCancel(context.Background())
-					m.analysisCancel = cancel
-					cmds = append(cmds, m.analyzeRepo(ctx, m.input.input), TickProgressCmd())
+					cmds = append(cmds, m.startAnalysis(m.input.input))
 					return m, tea.Batch(cmds...)
 				}
 			}
@@ -933,8 +917,26 @@ func (m MainModel) cloneRepo(repoName string) tea.Cmd {
 	}
 }
 
-func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
+// startAnalysis initializes the progress tracker and switches state to loading
+func (m *MainModel) startAnalysis(repoName string) tea.Cmd {
+	m.state = stateLoading
+	m.loading.SetRepoName(repoName)
+	ctx, cancel := context.WithCancel(context.Background())
+	m.analysisCancel = cancel
+
+	tracker := NewProgressTracker()
+	m.progress = tracker
+	m.loading.SetProgress(tracker)
+
+	return tea.Batch(m.analyzeRepo(ctx, repoName, tracker), TickProgressCmd())
+}
+
+func (m MainModel) analyzeRepo(ctx context.Context, repoName string, tracker *ProgressTracker) tea.Cmd {
 	return func() tea.Msg {
+		if tracker == nil {
+			tracker = NewProgressTracker()
+		}
+
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -960,8 +962,6 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 				}
 			}
 		}
-
-		tracker := NewProgressTracker()
 
 		// Stage 1: Fetch repository
 		client := github.NewClient()
@@ -1026,14 +1026,6 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 						changedFiles = append(changedFiles, path)
 					}
 				}
-
-				fmt.Printf("🔄 Incremental analysis enabled\n")
-				fmt.Printf("📂 Changed files detected: %d\n", len(changedFiles))
-
-				// No changes detected
-				if len(changedFiles) == 0 {
-					fmt.Println("✅ No repository changes detected. Using cached analysis.")
-				}
 			}
 		}
 
@@ -1043,6 +1035,8 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 		score := analyzer.CalculateHealth(repo, commits)
 		busFactor, busRisk := analyzer.BusFactor(contributors)
 		maturityScore, maturityLevel := analyzer.RepoMaturityScore(repo, len(commits), len(contributors), false)
+
+		tracker.NextStage()
 
 		// Stage 6: Analyze dependencies and contributor insights
 		deps, depsErr := analyzer.AnalyzeDependencies(client, parts[0], parts[1], repo.DefaultBranch, fileTree)
@@ -1062,9 +1056,6 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		tracker.NextStage()
-
-		// Mark complete
 		tracker.NextStage()
 		commitsLast90Days := 0
 		cutoff := time.Now().AddDate(0, 0, -90)
@@ -1105,6 +1096,8 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 			hotspots,
 		)
 
+		tracker.NextStage()
+
 		// Fetch issues and PRs
 		issues, issuesErr := client.GetIssues(parts[0], parts[1], "open")
 		if issuesErr != nil {
@@ -1126,6 +1119,8 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 			hasLockFile,
 			contributors,
 		)
+
+		tracker.NextStage()
 
 		result := AnalysisResult{
 			Repo:                repo,
