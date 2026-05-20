@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -75,7 +76,28 @@ Examples:
 		repo1, err := client.GetRepo(owner1, repo1Name)
 		if err != nil {
 			spinner.Stop()
-			return err
+			if strings.Contains(err.Error(), "repository not found") && !client.HasToken() {
+				fmt.Printf("The first repository %s/%s appears to be private. Please enter your GitHub access token: ", owner1, repo1Name)
+				scanner := bufio.NewScanner(os.Stdin)
+				if scanner.Scan() {
+					token := strings.TrimSpace(scanner.Text())
+					if token != "" {
+						client.SetToken(token)
+						spinner.Start(fmt.Sprintf("🔍 Analyzing %s/%s...", owner1, repo1Name))
+						repo1, err = client.GetRepo(owner1, repo1Name)
+						if err != nil {
+							spinner.Stop()
+							return fmt.Errorf("failed to access first repository even with token: %w", err)
+						}
+					} else {
+						return fmt.Errorf("no token provided, cannot access private repository")
+					}
+				} else {
+					return fmt.Errorf("failed to read token input")
+				}
+			} else {
+				return err
+			}
 		}
 
 		_, _ = client.GetLanguages(owner1, repo1Name)
@@ -99,7 +121,28 @@ Examples:
 		repo2, err := client.GetRepo(owner2, repo2Name)
 		if err != nil {
 			spinner.Stop()
-			return err
+			if strings.Contains(err.Error(), "repository not found") && !client.HasToken() {
+				fmt.Printf("The second repository %s/%s appears to be private. Please enter your GitHub access token: ", owner2, repo2Name)
+				scanner := bufio.NewScanner(os.Stdin)
+				if scanner.Scan() {
+					token := strings.TrimSpace(scanner.Text())
+					if token != "" {
+						client.SetToken(token)
+						spinner.Start(fmt.Sprintf("🔍 Analyzing %s/%s...", owner2, repo2Name))
+						repo2, err = client.GetRepo(owner2, repo2Name)
+						if err != nil {
+							spinner.Stop()
+							return fmt.Errorf("failed to access second repository even with token: %w", err)
+						}
+					} else {
+						return fmt.Errorf("no token provided, cannot access private repository")
+					}
+				} else {
+					return fmt.Errorf("failed to read token input")
+				}
+			} else {
+				return err
+			}
 		}
 
 		_, _ = client.GetLanguages(owner2, repo2Name)

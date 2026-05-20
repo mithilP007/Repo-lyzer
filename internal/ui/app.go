@@ -120,26 +120,31 @@ func NewMainModel(cache *cache.Cache, config *config.AppSettings) MainModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	token := ""
+	if config != nil {
+		token = config.GitHubToken
+	}
 	return MainModel{
-		state:          stateMenu,
-		menu:           NewMenuModel(),
-		input:          NewInputModel(),
-		loading:        NewLoadingModel(),
-		compareInput:   NewCompareInputModel(),
-		compareLoading: NewCompareLoadingModel(),
-		compareResult:  NewCompareResultModel(),
-		settings:       NewSettingsModel(),
-		help:           NewHelpModel(),
-		history:        NewHistoryModel(),
-		favorites:      NewFavoritesModel(),
-		cloneInput:     NewCloneInputModel(),
-		cloning:        NewCloningModel(),
-		notifications:  NewNotificationsModel(),
-		dashboard:      NewDashboardModel(),
-		tree:           NewTreeModel(nil),
-		cache:          cache,
-		appConfig:      config,
-		spinner:        s,
+		state:            stateMenu,
+		menu:             NewMenuModel(),
+		input:            NewInputModel(),
+		loading:          NewLoadingModel(),
+		compareInput:     NewCompareInputModel(),
+		compareLoading:   NewCompareLoadingModel(),
+		compareResult:    NewCompareResultModel(),
+		settings:         NewSettingsModel(),
+		help:             NewHelpModel(),
+		history:          NewHistoryModel(),
+		favorites:        NewFavoritesModel(),
+		cloneInput:       NewCloneInputModel(),
+		cloning:          NewCloningModel(),
+		notifications:    NewNotificationsModel(),
+		monitorDashboard: NewMonitorDashboardModel("", "", 5*time.Minute, token),
+		dashboard:        NewDashboardModel(),
+		tree:             NewTreeModel(nil),
+		cache:            cache,
+		appConfig:        config,
+		spinner:          s,
 	}
 }
 
@@ -368,6 +373,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if result, ok := msg.(AnalysisResult); ok {
+			if m.appConfig != nil {
+				m.dashboard.SetToken(m.appConfig.GitHubToken)
+			}
 			m.dashboard.SetData(result)
 			m.dashboard.SetCacheStatus("fresh")
 			m.state = stateDashboard
@@ -381,6 +389,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.history.Save()
 		}
 		if cachedResult, ok := msg.(CachedAnalysisResult); ok {
+			if m.appConfig != nil {
+				m.dashboard.SetToken(m.appConfig.GitHubToken)
+			}
 			m.dashboard.SetData(cachedResult.Result)
 			m.dashboard.SetCacheStatus("cached")
 			m.state = stateDashboard
@@ -830,6 +841,13 @@ func (m MainModel) View() string {
 	case stateFavorites:
 		return m.favorites.View(m.windowWidth, m.windowHeight)
 	case stateCloneInput:
+		if errVal, ok := m.err.(error); ok {
+			m.cloneInput.err = errVal
+		} else if m.err != nil {
+			m.cloneInput.err = fmt.Errorf("%v", m.err)
+		} else {
+			m.cloneInput.err = nil
+		}
 		return m.cloneInput.View(m.windowWidth, m.windowHeight)
 	case stateCloning:
 		return m.cloning.View(m.windowWidth, m.windowHeight)
@@ -881,10 +899,11 @@ type cloneResult struct {
 // cloneRepo clones a repository to the Desktop folder
 func (m MainModel) cloneRepo(repoName string) tea.Cmd {
 	return func() tea.Msg {
-		parts := strings.Split(repoName, "/")
-		if len(parts) != 2 {
-			return cloneResult{err: fmt.Errorf("invalid repository URL: must be in owner/repo format or a valid GitHub URL")}
+		owner, repo, err := github.ParseGitHubURL(repoName)
+		if err != nil {
+			return cloneResult{err: fmt.Errorf("invalid repository URL: %w", err)}
 		}
+		parts := []string{owner, repo}
 
 		// Get Desktop path
 		home, err := os.UserHomeDir()
@@ -920,10 +939,11 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 			return err
 		}
 
-		parts := strings.Split(repoName, "/")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid repository URL: must be in owner/repo format or a valid GitHub URL")
+		owner, repoNameParsed, err := github.ParseGitHubURL(repoName)
+		if err != nil {
+			return fmt.Errorf("invalid repository URL: %w", err)
 		}
+		parts := []string{owner, repoNameParsed}
 
 		// Check cache first
 		if m.cache != nil {
@@ -945,6 +965,9 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 
 		// Stage 1: Fetch repository
 		client := github.NewClient()
+		if m.appConfig != nil && m.appConfig.GitHubToken != "" {
+			client.SetToken(m.appConfig.GitHubToken)
+		}
 		client.SetContext(ctx)
 		repo, err := client.GetRepo(parts[0], parts[1])
 		if err != nil {
@@ -1140,6 +1163,9 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string) tea.Cmd {
 
 func (m MainModel) checkOwnership() bool {
 	client := github.NewClient()
+	if m.appConfig != nil && m.appConfig.GitHubToken != "" {
+		client.SetToken(m.appConfig.GitHubToken)
+	}
 	user, err := client.GetUser()
 	if err != nil {
 		return false // If we can't get user, assume not owner
@@ -1291,17 +1317,21 @@ func (m MainModel) compareResultView() string {
 
 func (m MainModel) compareRepos(repo1Name, repo2Name string) tea.Cmd {
 	return func() tea.Msg {
-		parts1 := strings.Split(repo1Name, "/")
-		parts2 := strings.Split(repo2Name, "/")
-
-		if len(parts1) != 2 {
-			return fmt.Errorf("invalid repository URL: first repository must be in owner/repo format or a valid GitHub URL")
+		owner1, repo1NameParsed, err := github.ParseGitHubURL(repo1Name)
+		if err != nil {
+			return fmt.Errorf("invalid first repository URL: %w", err)
 		}
-		if len(parts2) != 2 {
-			return fmt.Errorf("invalid repository URL: second repository must be in owner/repo format or a valid GitHub URL")
+		owner2, repo2NameParsed, err := github.ParseGitHubURL(repo2Name)
+		if err != nil {
+			return fmt.Errorf("invalid second repository URL: %w", err)
 		}
+		parts1 := []string{owner1, repo1NameParsed}
+		parts2 := []string{owner2, repo2NameParsed}
 
 		client := github.NewClient()
+		if m.appConfig != nil && m.appConfig.GitHubToken != "" {
+			client.SetToken(m.appConfig.GitHubToken)
+		}
 
 		// Analyze first repo
 		repo1, err := client.GetRepo(parts1[0], parts1[1])
@@ -1378,6 +1408,10 @@ func (m *MainModel) SetStateNotifications() {
 // SetStateMonitorDashboard sets the initial state to monitor dashboard
 func (m *MainModel) SetStateMonitorDashboard(owner, repo string, interval time.Duration) {
 	m.state = stateMonitorDashboard
-	m.monitorDashboard = NewMonitorDashboardModel(owner, repo, interval)
+	token := ""
+	if m.appConfig != nil {
+		token = m.appConfig.GitHubToken
+	}
+	m.monitorDashboard = NewMonitorDashboardModel(owner, repo, interval, token)
 	m.initialCmd = m.monitorDashboard.Init()
 }

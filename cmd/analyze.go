@@ -295,9 +295,34 @@ func runSummary(repoArg string) error {
 	repoInfo, err := client.GetRepo(owner, repo)
 	if err != nil {
 		overallProgress.Finish()
-		return fmt.Errorf("failed to get repository: %w", err)
+		// Check if it's a private repo error and no token is set
+		if strings.Contains(err.Error(), "repository not found") && !client.HasToken() {
+			fmt.Print("This appears to be a private repository. Please enter your GitHub access token: ")
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				token := strings.TrimSpace(scanner.Text())
+				if token != "" {
+					client.SetToken(token)
+					// Retry fetching the repo with the token
+					overallProgress = progress.NewOverallProgress(5)
+					overallProgress.StartStep("🔍 Fetching repository information")
+					repoInfo, err = client.GetRepo(owner, repo)
+					overallProgress.CompleteStep("Repository information fetched")
+					if err != nil {
+						return fmt.Errorf("failed to access repository even with token: %w", err)
+					}
+				} else {
+					return fmt.Errorf("no token provided, cannot access private repository")
+				}
+			} else {
+				return fmt.Errorf("failed to read token input")
+			}
+		} else {
+			return fmt.Errorf("failed to get repository: %w", err)
+		}
+	} else {
+		overallProgress.CompleteStep("Repository information fetched")
 	}
-	overallProgress.CompleteStep("Repository information fetched")
 
 	// Fetch commits from the last 30 days
 	overallProgress.StartStep("📝 Analyzing recent commits (30d)")

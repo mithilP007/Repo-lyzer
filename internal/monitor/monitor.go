@@ -296,3 +296,10 @@ func (m *Monitor) saveState() {
 	// For now, just save a placeholder
 	m.cache.Set(key, m.state)
 }
+
+// SetToken sets the GitHub token on the internal client
+func (m *Monitor) SetToken(token string) {
+	if m.client != nil {
+		m.client.SetToken(token)
+	}
+}
