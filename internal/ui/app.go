@@ -155,9 +155,32 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.windowWidth = msg.Width
 		m.windowHeight = msg.Height
-		// Update sub-models with window size
 		m.menu.width = msg.Width
 		m.menu.height = msg.Height
+
+		// Propagate window size to sub-models
+		if d, _ := m.dashboard.Update(msg); d != nil {
+			m.dashboard = d.(DashboardModel)
+		}
+		m.help, _ = m.help.Update(msg)
+		if h, _ := m.history.Update(msg); h != nil {
+			m.history = h.(HistoryModel)
+		}
+		if f, _ := m.favorites.Update(msg); f != nil {
+			m.favorites = f.(FavoritesModel)
+		}
+		if c, _ := m.cloning.Update(msg); c != nil {
+			m.cloning = c.(CloningModel)
+		}
+		if ci, _ := m.cloneInput.Update(msg); ci != nil {
+			m.cloneInput = ci.(CloneInputModel)
+		}
+		if n, _ := m.notifications.Update(msg); n != nil {
+			m.notifications = n.(NotificationsModel)
+		}
+		if md, _ := m.monitorDashboard.Update(msg); md != nil {
+			m.monitorDashboard = md.(MonitorDashboardModel)
+		}
 
 	case BackToMenuMsg:
 		if m.analysisCancel != nil {
@@ -205,6 +228,21 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateMonitorDashboard
 			case 7: // Settings
 				m.state = stateSettings
+				switch m.menu.submenuCursor {
+				case 0:
+					m.settingsOption = "theme"
+				case 1:
+					m.settingsOption = "cache"
+				case 2:
+					m.settingsOption = "export"
+				case 3:
+					m.settingsOption = "token"
+				case 4:
+					m.settingsOption = "reset"
+				default:
+					m.settingsOption = ""
+				}
+				m.settings.settingsOption = m.settingsOption
 			case 8: // Help
 				m.state = stateHelp
 			case 9: // Exit
@@ -217,6 +255,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateInput:
 		newInput, cmd := m.input.Update(msg)
 		m.input = newInput.(InputModel)
+		if m.input.err == nil {
+			m.err = nil
+		}
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -231,11 +272,15 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.analyzeRepo(ctx, msg.repoName), TickProgressCmd())
 		case BackToMenuMsg:
 			m.state = stateMenu
+			m.err = nil
 		}
 
 	case stateCompareInput:
 		newCompareInput, cmd := m.compareInput.Update(msg)
 		m.compareInput = newCompareInput.(CompareInputModel)
+		if m.compareInput.err == nil {
+			m.err = nil
+		}
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -247,7 +292,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.compareRepos(msg.Repo1, msg.Repo2), TickProgressCmd())
 		case BackToMenuMsg:
 			m.state = stateMenu
+			m.err = nil
 		}
+
 
 	case stateCompareLoading:
 		var cmd tea.Cmd
@@ -720,21 +767,66 @@ func (m MainModel) View() string {
 	case stateMenu:
 		return m.menu.View()
 	case stateInput:
-		return m.input.View()
+		m.input.err = m.err
+		box := m.input.View()
+		if m.windowWidth == 0 {
+			return box
+		}
+		return lipgloss.Place(
+			m.windowWidth,
+			m.windowHeight,
+			lipgloss.Center,
+			lipgloss.Center,
+			box,
+		)
 	case stateLoading:
 		return m.loading.View(m.windowWidth, m.windowHeight)
 	case stateCompareInput:
-		return m.compareInput.View()
+		m.compareInput.err = m.err
+		box := m.compareInput.View()
+		if m.windowWidth == 0 {
+			return box
+		}
+		return lipgloss.Place(
+			m.windowWidth,
+			m.windowHeight,
+			lipgloss.Center,
+			lipgloss.Center,
+			box,
+		)
 	case stateCompareLoading:
 		return m.compareLoading.View(m.windowWidth, m.windowHeight)
 	case stateCompareResult:
 		return m.compareResult.View(m.windowWidth, m.windowHeight)
 	case stateSettings:
-		return m.settings.View()
+		m.settings.settingsOption = m.settingsOption
+		m.settings.inTokenInput = m.inTokenInput
+		m.settings.tokenInput = m.tokenInput
+		m.settings.appConfig = m.appConfig
+		m.settings.cache = m.cache
+		box := m.settings.View()
+		if m.err != nil {
+			statusStr := m.err.Error()
+			if strings.HasPrefix(statusStr, "✓") || strings.HasPrefix(statusStr, "Theme") || strings.HasPrefix(statusStr, "Cache") || strings.HasPrefix(statusStr, "GitHub token") || strings.HasPrefix(statusStr, "Removed") {
+				box += "\n\n" + SuccessStyle.Render(statusStr)
+			} else {
+				box += "\n\n" + ErrorStyle.Render(statusStr)
+			}
+		}
+		if m.windowWidth == 0 {
+			return box
+		}
+		return lipgloss.Place(
+			m.windowWidth,
+			m.windowHeight,
+			lipgloss.Center,
+			lipgloss.Center,
+			box,
+		)
 	case stateHelp:
 		return m.help.View(m.windowWidth, m.windowHeight)
 	case stateHistory:
-		return m.history.View()
+		return m.history.ViewWithSize(m.windowWidth, m.windowHeight)
 	case stateFavorites:
 		return m.favorites.View(m.windowWidth, m.windowHeight)
 	case stateCloneInput:
@@ -742,9 +834,9 @@ func (m MainModel) View() string {
 	case stateCloning:
 		return m.cloning.View(m.windowWidth, m.windowHeight)
 	case stateNotifications:
-		return m.notifications.View()
+		return m.notifications.ViewWithSize(m.windowWidth, m.windowHeight)
 	case stateMonitorDashboard:
-		return m.monitorDashboard.View()
+		return m.monitorDashboard.ViewWithSize(m.windowWidth, m.windowHeight)
 	case stateDashboard:
 		return m.dashboard.View()
 	case stateTree:

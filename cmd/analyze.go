@@ -32,70 +32,9 @@ func RunAnalyze(owner, repo string) error {
 
 // validateRepoURL validates the repository URL format and provides clear error messages
 func validateRepoURL(repoArg string) (owner, repo string, err error) {
-	if repoArg == "" {
-		return "", "", fmt.Errorf("repository URL cannot be empty")
-	}
-
-	if strings.Contains(repoArg, " ") {
-		return "", "", fmt.Errorf("repository URL cannot contain spaces")
-	}
-
-	parts := strings.Split(repoArg, "/")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("repository must be in 'owner/repo' format (found %d parts separated by '/')", len(parts))
-	}
-
-	owner, repo = parts[0], parts[1]
-
-	if owner == "" {
-		return "", "", fmt.Errorf("owner name cannot be empty")
-	}
-
-	if repo == "" {
-		return "", "", fmt.Errorf("repository name cannot be empty")
-	}
-
-	// Basic validation for GitHub username/repo name patterns
-	if len(owner) > 39 {
-		return "", "", fmt.Errorf("owner name is too long (maximum 39 characters)")
-	}
-
-	if len(owner) < 1 {
-		return "", "", fmt.Errorf("owner name is too short (minimum 1 character)")
-	}
-
-	if strings.HasPrefix(owner, "-") || strings.HasSuffix(owner, "-") {
-		return "", "", fmt.Errorf("owner name cannot start or end with a hyphen")
-	}
-
-	if strings.Contains(owner, "--") {
-		return "", "", fmt.Errorf("owner name cannot contain consecutive hyphens")
-	}
-
-	// Check for valid characters (alphanumeric, hyphens)
-	for _, char := range owner {
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '-') {
-			return "", "", fmt.Errorf("owner name contains invalid character '%c' (only alphanumeric characters and hyphens allowed)", char)
-		}
-	}
-
-	if len(repo) > 100 {
-		return "", "", fmt.Errorf("repository name is too long (maximum 100 characters)")
-	}
-
-	if len(repo) < 1 {
-		return "", "", fmt.Errorf("repository name is too short (minimum 1 character)")
-	}
-
-	// Repository names can contain more characters than usernames
-	for _, char := range repo {
-		if char == ' ' || char == '\t' || char == '\n' || char == '\r' {
-			return "", "", fmt.Errorf("repository name cannot contain whitespace")
-		}
-	}
-
-	return owner, repo, nil
+	return github.ParseGitHubURL(repoArg)
 }
+
 
 // runDryRun performs a dry run of the analysis, validating the repository URL
 // and displaying what metrics would be calculated without making API calls.
