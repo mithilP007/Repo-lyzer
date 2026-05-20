@@ -113,6 +113,10 @@ type MainModel struct {
 	progress        *ProgressTracker
 	cacheStatus     string
 	initialCmd      tea.Cmd
+
+	// Rate limiting / duplicate request prevention (#266)
+	analysisInProgress bool
+	lastAnalysisTime   time.Time
 }
 
 // NewMainModel creates a new MainModel with initialized sub-models
@@ -192,6 +196,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.analysisCancel()
 			m.analysisCancel = nil
 		}
+		m.analysisInProgress = false
 		m.state = stateMenu
 		return m, nil
 
@@ -379,6 +384,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.progress = nil
 			m.cacheStatus = "fresh"
 			m.analysisCancel = nil
+			m.analysisInProgress = false
 			// Save to history
 			history, _ := LoadHistory()
 			m.history.Entries = history.Entries
@@ -395,6 +401,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.progress = nil
 			m.cacheStatus = "cached"
 			m.analysisCancel = nil
+			m.analysisInProgress = false
 			// Save to history
 			history, _ := LoadHistory()
 			m.history.Entries = history.Entries
@@ -403,6 +410,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if err, ok := msg.(error); ok {
 			m.progress = nil
+			m.analysisInProgress = false
 			if errors.Is(err, context.Canceled) {
 				m.err = nil
 				m.state = stateMenu
@@ -918,8 +926,26 @@ func (m MainModel) cloneRepo(repoName string) tea.Cmd {
 	}
 }
 
-// startAnalysis initializes the progress tracker and switches state to loading
+// startAnalysis initializes the progress tracker and switches state to loading.
+// It prevents duplicate requests and debounces rapid submissions (#266).
 func (m *MainModel) startAnalysis(repoName string) tea.Cmd {
+	// Prevent duplicate analysis while one is already in progress
+	if m.analysisInProgress {
+		return nil
+	}
+
+	// Debounce: reject if less than 2 seconds since last analysis started
+	if !m.lastAnalysisTime.IsZero() && time.Since(m.lastAnalysisTime) < 2*time.Second {
+		return nil
+	}
+
+	// Cancel any previous in-flight analysis
+	if m.analysisCancel != nil {
+		m.analysisCancel()
+	}
+
+	m.analysisInProgress = true
+	m.lastAnalysisTime = time.Now()
 	m.state = stateLoading
 	m.loading.SetRepoName(repoName)
 	ctx, cancel := context.WithCancel(context.Background())
