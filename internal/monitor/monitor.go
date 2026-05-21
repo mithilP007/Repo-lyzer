@@ -220,8 +220,7 @@ func (m *Monitor) checkPullRequests() {
 		return
 	}
 
-	// Simplified check - in reality, we'd distinguish between issues and PRs
-	if len(prs) > 0 {
+	if len(prs) != m.state.LastPRID {
 		notification := Notification{
 			Type:      "pr",
 			Title:     "Pull Requests Update",
@@ -230,6 +229,7 @@ func (m *Monitor) checkPullRequests() {
 			Severity:  "info",
 		}
 		m.notifications <- notification
+		m.state.LastPRID = len(prs)
 	}
 }
 
