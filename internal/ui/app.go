@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/agnivo988/Repo-lyzer/internal/analyzer"
 	"github.com/agnivo988/Repo-lyzer/internal/cache"
 	"github.com/agnivo988/Repo-lyzer/internal/config"
+	"github.com/agnivo988/Repo-lyzer/internal/contribution"
 	"github.com/agnivo988/Repo-lyzer/internal/github"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -1169,6 +1171,7 @@ func (m MainModel) analyzeRepo(ctx context.Context, repoName string, tracker *Pr
 			Issues:              issues,
 			PRs:                 prs,
 			MaintainerAnalysis:  maintainerAnalysis,
+			ContributionScore:   contribScore,
 		}
 
 		// Save to cache

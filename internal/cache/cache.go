@@ -219,6 +219,11 @@ func (c *Cache) Get(repoName string) (*CacheEntry, bool) {
 
 // Set stores an analysis result in the cache
 func (c *Cache) Set(repoName string, analysis interface{}) error {
+	return c.SetWithTTL(repoName, analysis, c.config.TTL)
+}
+
+// SetWithTTL stores an analysis result in the cache with an explicit TTL.
+func (c *Cache) SetWithTTL(repoName string, analysis interface{}, ttl time.Duration) error {
 	if !c.config.Enabled || !c.config.AutoCache {
 		return nil
 	}
@@ -233,7 +238,7 @@ func (c *Cache) Set(repoName string, analysis interface{}) error {
 	entry := CacheEntry{
 		RepoName:            repoName,
 		CachedAt:            now,
-		ExpiresAt:           now.Add(c.config.TTL),
+		ExpiresAt:           now.Add(ttl),
 		Analysis:            analysisData,
 		IncrementalMetadata: make(map[string]string),
 	}
@@ -261,7 +266,7 @@ func (c *Cache) Set(repoName string, analysis interface{}) error {
 	c.index.Entries[repoName] = CacheIndexEntry{
 		RepoName:  repoName,
 		CachedAt:  now,
-		ExpiresAt: now.Add(c.config.TTL),
+		ExpiresAt: now.Add(ttl),
 		FileSize:  fileSize,
 	}
 
